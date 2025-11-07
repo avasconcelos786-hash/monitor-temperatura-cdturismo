@@ -1,0 +1,381 @@
+esse codigo eu coloco onde <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Temperatura CD Turismo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'databricks-red': '#cc332c',
+                        'databricks-blue': '#006699',
+                        'surface': '#f4f7f9',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for better mobile UI */
+        body {
+            background-color: #f4f7f9;
+        }
+        .container-app {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .input-file-container {
+            border: 2px dashed #ccc;
+            background-color: #fff;
+            transition: all 0.3s;
+        }
+        .input-file-container:hover {
+            border-color: #006699;
+            background-color: #e6f0f4;
+        }
+        .data-table input {
+            text-align: right;
+            border: 1px solid #ddd;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: border-color 0.2s;
+        }
+        .data-table input:focus {
+            outline: none;
+            border-color: #006699;
+            box-shadow: 0 0 0 1px #006699;
+        }
+    </style>
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, collection, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables MUST be present in the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId = null;
+
+        // Initialize Firebase
+        if (Object.keys(firebaseConfig).length > 0) {
+            setLogLevel('Debug');
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            
+            // Authentication
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    document.getElementById('user-status').textContent = `Usuário ID: ${userId}`;
+                } else {
+                    // Sign in anonymously if no custom token is available
+                    signInAnonymously(auth)
+                        .then(userCredential => {
+                             userId = userCredential.user.uid;
+                             document.getElementById('user-status').textContent = `Usuário ID: ${userId}`;
+                        })
+                        .catch(error => {
+                            console.error("Erro ao autenticar anonimamente:", error);
+                        });
+                }
+            });
+
+            // Use custom token if provided (Canvas environment)
+            if (initialAuthToken) {
+                signInWithCustomToken(auth, initialAuthToken).catch(error => {
+                    console.error("Erro ao autenticar com token:", error);
+                    signInAnonymously(auth);
+                });
+            }
+        } else {
+            document.getElementById('user-status').textContent = "Firebase não configurado. As submissões serão apenas simuladas.";
+        }
+
+        // Global scope for use in the main script
+        window.db = db;
+        window.auth = auth;
+        window.getUserId = () => userId || crypto.randomUUID(); // Fallback for userId
+        window.getAppId = () => appId;
+        window.addDoc = addDoc;
+        window.collection = collection;
+        window.serverTimestamp = serverTimestamp;
+    </script>
+</head>
+<body class="font-sans text-gray-800">
+
+    <div class="container-app">
+        <header class="text-center py-6 bg-white shadow-lg rounded-xl mb-6">
+            <h1 class="text-3xl font-bold text-databricks-blue">Monitor de Temperatura CD Turismo</h1>
+            <p class="text-gray-500 mt-1">Captura e Extração de Leitura de Painel via Imagem</p>
+            <p id="user-status" class="text-xs mt-2 text-gray-400"></p>
+        </header>
+
+        <main>
+            <!-- Upload/Capture Section -->
+            <section id="upload-section" class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                <h2 class="text-xl font-semibold mb-4 flex items-center text-databricks-red">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.218A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.218A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    1. Capturar ou Carregar Imagem
+                </h2>
+                <div class="input-file-container p-8 text-center rounded-lg cursor-pointer">
+                    <input type="file" id="image-upload" accept="image/*" capture="environment" class="hidden" onchange="handleImageUpload(event)">
+                    <label for="image-upload" class="flex flex-col items-center justify-center h-24">
+                        <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 014 4v2a2 2 0 01-2 2h-1"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 17l-4-4m0 0l-4 4m4-4v12"></path></svg>
+                        <span class="mt-2 text-databricks-blue font-medium">Toque para Tirar Foto ou Selecionar</span>
+                        <span id="file-name" class="text-xs text-gray-500 mt-1">Nenhum arquivo selecionado</span>
+                    </label>
+                </div>
+                <img id="preview-image" src="" alt="Pré-visualização do Painel" class="mt-4 hidden w-full rounded-lg shadow-md max-h-64 object-contain">
+            </section>
+
+            <!-- Results and Validation Section -->
+            <section id="results-section" class="bg-white p-6 rounded-xl shadow-lg hidden">
+                <h2 class="text-xl font-semibold mb-4 flex items-center text-databricks-red">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    2. Validação das Leituras Extraídas (OCR Simulado)
+                </h2>
+                
+                <div id="loading-spinner" class="text-center py-8 hidden">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-databricks-blue inline-block"></div>
+                    <p class="mt-3 text-databricks-blue">A extrair dados da imagem... (Simulação de OCR)</p>
+                </div>
+
+                <div id="readings-container" class="data-table mt-4">
+                    <!-- Readings table will be generated here -->
+                </div>
+                
+                <div class="flex justify-end mt-6">
+                    <button id="send-button" onclick="submitReadings()" class="bg-databricks-blue hover:bg-databricks-red text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-300 disabled:opacity-50" disabled>
+                        <svg class="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                        3. Enviar Dados Validados
+                    </button>
+                </div>
+
+                <div id="status-message" class="mt-4 p-3 rounded-lg text-center font-medium hidden"></div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // MOCK DATA: Simula as 18 leituras que seriam extraídas pelo motor OCR
+        const MOCK_READINGS = Array.from({ length: 18 }, (_, i) => ({
+            id: i + 1,
+            label: `Termômetro ${String(i + 1).padStart(2, '0')}`,
+            // Valores simulados, seguindo um padrão para demonstração
+            value: (20.0 + (i % 5) * 1.3 - (i % 3) * 0.5).toFixed(1)
+        }));
+
+        let currentReadings = [];
+        let imageBase64 = null;
+
+        // Funções de Utilidade
+        function showMessage(type, message) {
+            const statusDiv = document.getElementById('status-message');
+            statusDiv.textContent = message;
+            statusDiv.className = 'mt-4 p-3 rounded-lg text-center font-medium';
+            if (type === 'success') {
+                statusDiv.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                statusDiv.classList.add('bg-red-100', 'text-red-800');
+            } else {
+                statusDiv.classList.add('bg-yellow-100', 'text-yellow-800');
+            }
+            statusDiv.classList.remove('hidden');
+        }
+
+        // Função principal para upload de imagem
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            const fileNameDisplay = document.getElementById('file-name');
+            const previewImage = document.getElementById('preview-image');
+            const resultsSection = document.getElementById('results-section');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const readingsContainer = document.getElementById('readings-container');
+            const sendButton = document.getElementById('send-button');
+
+            if (!file) return;
+
+            fileNameDisplay.textContent = file.name;
+            resultsSection.classList.add('hidden');
+            document.getElementById('status-message').classList.add('hidden');
+            sendButton.disabled = true;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const base64Data = e.target.result;
+                imageBase64 = base64Data;
+                
+                previewImage.src = base64Data;
+                previewImage.classList.remove('hidden');
+
+                // Inicia a simulação do processo OCR
+                simulateOCR(base64Data);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Simulação do Processo OCR
+        function simulateOCR(imageData) {
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const readingsContainer = document.getElementById('readings-container');
+            const resultsSection = document.getElementById('results-section');
+            const sendButton = document.getElementById('send-button');
+
+            readingsContainer.innerHTML = '';
+            loadingSpinner.classList.remove('hidden');
+            resultsSection.classList.remove('hidden');
+            sendButton.disabled = true;
+
+            // Simula uma chamada API de OCR com um atraso de 2 segundos
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+                
+                // Popula as leituras extraídas (MOCK_READINGS)
+                currentReadings = JSON.parse(JSON.stringify(MOCK_READINGS));
+                renderReadingsTable();
+                sendButton.disabled = false;
+                showMessage('warning', 'Leituras extraídas. Por favor, valide os valores antes de enviar.');
+
+            }, 2000);
+        }
+
+        // Renderiza a tabela para validação
+        function renderReadingsTable() {
+            const container = document.getElementById('readings-container');
+            let tableHTML = `
+                <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 text-sm">
+            `;
+            
+            currentReadings.forEach(reading => {
+                tableHTML += `
+                    <div class="flex flex-col p-2 bg-surface rounded-md border border-gray-200 shadow-sm">
+                        <label for="temp-${reading.id}" class="text-xs font-semibold text-gray-600 mb-1">${reading.label}</label>
+                        <div class="flex items-center">
+                            <input 
+                                type="number" 
+                                step="0.1" 
+                                id="temp-${reading.id}" 
+                                value="${reading.value}" 
+                                oninput="updateReadingValue(${reading.id}, this.value)" 
+                                class="w-full text-lg font-mono text-databricks-red"
+                            >
+                            <span class="ml-1 text-gray-500">°C</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            tableHTML += `</div>`;
+            container.innerHTML = tableHTML;
+        }
+
+        // Atualiza o valor na memória quando o usuário edita
+        function updateReadingValue(id, value) {
+            const reading = currentReadings.find(r => r.id === id);
+            if (reading) {
+                // Validação simples: remover não-numéricos, manter apenas 1 casa decimal
+                const cleanValue = parseFloat(value).toFixed(1); 
+                reading.value = cleanValue;
+            }
+        }
+
+        // Envia os dados validados (Simulação de Webhook e Log no Firestore)
+        function submitReadings() {
+            const sendButton = document.getElementById('send-button');
+            sendButton.disabled = true;
+            showMessage('warning', 'A enviar dados para a API e a gravar log...');
+
+            // Formata os dados para envio
+            const dataToSend = {
+                timestamp: new Date().toISOString(),
+                location: "CD Turismo - Depósito",
+                readings: currentReadings.map(r => ({
+                    id: r.id,
+                    label: r.label,
+                    value: parseFloat(r.value)
+                })),
+                imageBase64Snippet: imageBase64 ? imageBase64.substring(0, 100) + '...' : 'No image uploaded'
+            };
+
+            // 1. SIMULAÇÃO DO ENVIO PARA O WEBHOOK/API (exemplo de POST)
+            // Na vida real, o código faria:
+            /*
+            fetch('SUA_WEBHOOK_URL_AQUI', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataToSend)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Falha no Webhook');
+                return response.json();
+            })
+            .then(apiResponse => { ... })
+            .catch(error => { ... });
+            */
+            
+            // Simulamos o sucesso do envio
+            setTimeout(async () => {
+                let webhookSuccess = true; // Assumimos que o Webhook funcionou
+                
+                if (webhookSuccess) {
+                    // 2. LOG NO FIRESTORE (Log de auditoria do sistema)
+                    if (window.db) {
+                        try {
+                            const userId = window.getUserId();
+                            const appId = window.getAppId();
+                            
+                            // Loga a submissão no banco de dados privado do usuário
+                            const logCollectionPath = `/artifacts/${appId}/users/${userId}/temperature_logs`;
+                            await window.addDoc(window.collection(window.db, logCollectionPath), {
+                                timestamp: window.serverTimestamp(),
+                                submitted_by: userId,
+                                location_name: dataToSend.location,
+                                readings: dataToSend.readings,
+                                // Guardamos apenas um snippet da imagem para evitar exceder o limite de 1MB do documento
+                                image_snippet: dataToSend.imageBase64Snippet, 
+                                submission_status: "SUCCESS"
+                            });
+                        } catch (e) {
+                            console.error("Erro ao gravar log no Firestore:", e);
+                            showMessage('error', `Dados enviados com sucesso (SIMULADO), mas houve um erro ao gravar o LOG de auditoria.`);
+                            sendButton.disabled = false;
+                            return;
+                        }
+                    }
+
+                    // Mensagem Final de Sucesso
+                    showMessage('success', `
+                        SUCESSO! As leituras foram validadas e enviadas para o Webhook/API. 
+                        Data e Hora: ${new Date().toLocaleTimeString('pt-BR')}
+                    `);
+                } else {
+                    showMessage('error', 'ERRO: Falha ao enviar dados para a Webhook/API. Tente novamente.');
+                }
+
+                // Permite uma nova submissão após um pequeno atraso
+                setTimeout(() => {
+                     sendButton.disabled = false;
+                }, 1000);
+            }, 1500); // 1.5 segundos de simulação de envio
+        }
+
+        // Inicia a função de autenticação e escuta do Firebase na janela onload
+        window.onload = function() {
+            // A inicialização do Firebase é feita no script type="module" acima.
+            // Apenas garantimos que o container de resultados está escondido inicialmente.
+            document.getElementById('results-section').classList.add('hidden');
+        };
+    </script>
+</body>
+</html>
